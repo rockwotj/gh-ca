@@ -1,6 +1,7 @@
 #!/usr/bin/env python3 -u
 # coding=utf-8
 
+import asyncio
 import argparse
 import subprocess
 import re
@@ -18,6 +19,43 @@ def _check_output(cmd):
         print(output, end="", file=sys.stdout)
         sys.exit(proc.returncode)
     return output
+
+async def _transform_stdout(cmd, env, regex, replacement):
+    class SubprocessProtocol(asyncio.SubprocessProtocol):
+        def __init__(self, exit_future):
+            self.exit_future = exit_future
+
+        def pipe_data_received(self, fd, data):
+            if fd not in [1, 2]:
+                print(f"Unexpected file descriptor: {fd}", file=sys.stderr)
+                sys.exit(1)
+            stdout = data.decode('utf-8')
+            stream = sys.stdout if fd == 1 else sys.stderr
+            stream.write(regex.sub(replacement, stdout))
+            stream.flush()
+
+        def pipe_connection_lost(self, fd, exc):
+            if not self.exit_future.done():
+                self.exit_future.set_result(True)
+
+        def process_exited(self):
+            if not self.exit_future.done():
+                self.exit_future.set_result(True)
+
+    loop = asyncio.get_running_loop()
+    fut = loop.create_future()
+    transport, protocol = await loop.subprocess_exec(
+        lambda: SubprocessProtocol(fut),
+        *cmd,
+        stdin=None,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    # TODO signals
+    await fut
+    transport.close()
+    return transport.get_returncode()
 
 
 def create_pr(args):
@@ -50,7 +88,7 @@ def create_pr(args):
         if push_proc.returncode != 0:
             sys.exit(push_proc.returncode)
 
-    cmd = ["gh", "pr", "create"]
+    cmd = ["gh", "pr", "create", "--label", "codeapprove"]
     if args.draft:
         cmd.append("--draft")
     if args.fill:
@@ -67,23 +105,15 @@ def create_pr(args):
     pr_link_re = re.compile(
         r"\bhttps://github.com/(?P<owner>\w+)/(?P<repo>\w+)/pull/(?P<number>\d+)\b"
     )
-    pr_proc = subprocess.Popen(
-        cmd,
-        env={"GH_FORCE_TTY":"true", **os.environ},
-        stdout=subprocess.PIPE,
-        bufsize=0,
-        text=True,
-        encoding='utf-8',
-    )
-    for chunk in pr_proc.stdout:
-        sys.stdout.write(
-            pr_link_re.sub(
-                r"https://codeapprove.com/pr/\g<owner>/\g<repo>/\g<number>", chunk
-            ),
+    returncode = asyncio.run(
+        _transform_stdout(
+            cmd=cmd,
+            env={"GH_FORCE_TTY":"true", **os.environ},
+            regex=pr_link_re,
+            replacement=r"https://codeapprove.com/pr/\g<owner>/\g<repo>/\g<number>",
         )
-        sys.stdout.flush()
-
-    sys.exit(pr_proc.wait())
+    )
+    sys.exit(returncode)
 
 
 if __name__ == "__main__":
