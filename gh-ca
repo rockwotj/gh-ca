@@ -12,7 +12,7 @@ def _check_output(cmd):
     Captures the output of `cmd`, exiting the program if the command fails.
     """
     proc = subprocess.run(cmd, stdout=subprocess.PIPE)
-    output = rev_parse_proc.stdout.decode("utf-8")
+    output = proc.stdout.decode("utf-8")
     if proc.returncode != 0:
         print(output, end="", file=sys.stdout)
         sys.exit(proc.returncode)
