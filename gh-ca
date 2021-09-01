@@ -20,6 +20,7 @@ def _check_output(cmd):
         sys.exit(proc.returncode)
     return output
 
+
 async def _transform_stdout(cmd, env, regex, replacement):
     class SubprocessProtocol(asyncio.SubprocessProtocol):
         def __init__(self, exit_future):
@@ -29,7 +30,7 @@ async def _transform_stdout(cmd, env, regex, replacement):
             if fd not in [1, 2]:
                 print(f"Unexpected file descriptor: {fd}", file=sys.stderr)
                 sys.exit(1)
-            stdout = data.decode('utf-8')
+            stdout = data.decode("utf-8")
             stream = sys.stdout if fd == 1 else sys.stderr
             stream.write(regex.sub(replacement, stdout))
             stream.flush()
@@ -77,7 +78,13 @@ def create_pr(args):
         # Check that we're not pushing the main branch
         # TODO(rockwood): Don't assume the remote is named "origin", but look it up.
         master_check_proc = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", 'HEAD', f"remotes/origin/{default_branch}"]
+            [
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                "HEAD",
+                f"remotes/origin/{default_branch}",
+            ]
         )
         if master_check_proc.returncode == 0:
             print("You are on the master branch", file=sys.stderr)
@@ -108,7 +115,7 @@ def create_pr(args):
     returncode = asyncio.run(
         _transform_stdout(
             cmd=cmd,
-            env={"GH_FORCE_TTY":"true", **os.environ},
+            env={"GH_FORCE_TTY": "true", **os.environ},
             regex=pr_link_re,
             replacement=r"https://codeapprove.com/pr/\g<owner>/\g<repo>/\g<number>",
         )
