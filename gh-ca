@@ -38,10 +38,11 @@ def create_pr(args):
             ]
         )
         # Check that we're not pushing the main branch
+        # TODO(rockwood): Don't assume the remote is named "origin", but look it up.
         master_check_proc = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", current_branch, default_branch]
+            ["git", "merge-base", "--is-ancestor", current_branch, f"remotes/origin/{default_branch}"]
         )
-        if master_check_proc.returncode != 0:
+        if master_check_proc.returncode == 0:
             print("You are on the master branch", file=sys.stderr)
             sys.exit(1)
         # Push this branch to the origin.
