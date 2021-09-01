@@ -6,24 +6,46 @@ import subprocess
 import re
 import sys
 
+
+def _check_output(cmd):
+    """
+    Captures the output of `cmd`, exiting the program if the command fails.
+    """
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE)
+    output = rev_parse_proc.stdout.decode("utf-8")
+    if proc.returncode != 0:
+        print(output, end="", file=sys.stdout)
+        sys.exit(proc.returncode)
+    return output
+
+
 def create_pr(args):
     """
     The PR subcommand for the CodeApprove CLI. This pushes the current branch and then calls gh pr create.
     """
     if not args.no_push:
         # Get the current sha that we're going to push
-        rev_parse_proc = subprocess.run(['git', 'rev-parse', 'HEAD'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        rev_parse_output = rev_parse_proc.stdout.decode("utf-8")
-        if rev_parse_proc.returncode != 0:
-            print(rev_parse_output, end='', file=sys.stderr)
-            sys.exit(rev_parse_proc.returncode)
-        # Check that we're not pushing the master branch
-        master_check_proc = subprocess.run(['git', 'merge-base', '--is-ancestor', rev_parse_output, 'master'])
+        current_branch = _check_output(["git", "rev-parse", "HEAD"])
+        default_branch = _check_output(
+            [
+                "gh",
+                "repo",
+                "view",
+                "--json",
+                "defaultBranchRef",
+                "--jq",
+                ".defaultBranchRef.name",
+            ]
+        )
+        # Check that we're not pushing the main branch
+        master_check_proc = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", rev_parse_output, default_branch]
+        )
         if master_check_proc.returncode != 0:
             print("You are on the master branch", file=sys.stderr)
             sys.exit(1)
         # Push this branch to the origin.
-        push_proc = subprocess.run(['git', 'push', '--set-upstream', 'origin', 'HEAD'])
+        push_proc = subprocess.run(["git", "push", "--set-upstream", "origin", "HEAD"])
         if push_proc.returncode != 0:
             sys.exit(push_proc.returncode)
 
@@ -41,41 +63,85 @@ def create_pr(args):
 
     # Call the underlying gh pr create command but replace the link that is printed over stdout with the
     # code approve link instead.
-    pr_link_re = re.compile(r'\bhttps://github.com/(?P<owner>\w+)/(?P<repo>\w+)/pull/(?P<number>\d+)\b')
+    pr_link_re = re.compile(
+        r"\bhttps://github.com/(?P<owner>\w+)/(?P<repo>\w+)/pull/(?P<number>\d+)\b"
+    )
     pr_proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
-        bufsize=1, # Buffer output by lines
+        bufsize=1,  # Buffer output by lines
         universal_newlines=True,
     )
     for line in pr_proc.stdout:
-        print(pr_link_re.sub(r'https://codeapprove.com/pr/\g<owner>/\g<repo>/\g<number>', line), end="")
+        print(
+            pr_link_re.sub(
+                r"https://codeapprove.com/pr/\g<owner>/\g<repo>/\g<number>", line
+            ),
+            end="",
+        )
 
     sys.exit(pr_proc.wait())
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="A GitHub CLI extension for CodeApprove")
+    parser = argparse.ArgumentParser(
+        description="A GitHub CLI extension for CodeApprove"
+    )
 
-    subparsers = parser.add_subparsers(title="CMD", help="The subcommand to issue", required=True)
+    subparsers = parser.add_subparsers(
+        title="subcommands", help="The subcommand to issue"
+    )
 
     # PR START
-    pr_parser = subparsers.add_parser("pr", help='Create a PR on CodeApprove - similar to `gh pr create`')
+    pr_parser = subparsers.add_parser(
+        "pr", help="Create a PR on CodeApprove - similar to `gh pr create`"
+    )
     # This is a trick from the python documentation to get dynamic dispatch for each subcommand.
     pr_parser.set_defaults(cmd=create_pr)
 
     # These are unique to this extension and should not conflict with gh pr create options.
-    pr_parser.add_argument("--no_push", action="store_true" help="Disable pushing this branch to the origin first")
+    pr_parser.add_argument(
+        "--no_push",
+        action="store_true",
+        help="Disable pushing this branch to the origin first",
+    )
 
     # NOTE: The following flags mirror the flags in the original gh pr create command.
-    pr_parser.add_argument("-d", "--draft", action="store_true" help="Mark pull request as a draft")
-    pr_parser.add_argument("-f", "--fill", action="store_true" help="Do not prompt for title/body and just use commit info")
-    pr_parser.add_argument("-w", "--web", action="store_true" help="Open the web browser to create a pull request")
-    pr_parser.add_argument("-B", "--base", metavar="branch", type=str, help="The branch into which you want your code merged")
-    pr_parser.add_argument("-r", "--reviewer", metavar="handle", type=str, help="Request reviews from people handle - also assignes")
+    pr_parser.add_argument(
+        "-d", "--draft", action="store_true", help="Mark pull request as a draft"
+    )
+    pr_parser.add_argument(
+        "-f",
+        "--fill",
+        action="store_true",
+        help="Do not prompt for title/body and just use commit info",
+    )
+    pr_parser.add_argument(
+        "-w",
+        "--web",
+        action="store_true",
+        help="Open the web browser to create a pull request",
+    )
+    pr_parser.add_argument(
+        "-B",
+        "--base",
+        metavar="branch",
+        type=str,
+        help="The branch into which you want your code merged",
+    )
+    pr_parser.add_argument(
+        "-r",
+        "--reviewer",
+        metavar="handle",
+        type=str,
+        help="Request reviews from people handle - also assigns them",
+    )
     # PR END
 
     args = parser.parse_args()
 
-    args.cmd(args)
+    if not hasattr(args, "cmd"):
+        parser.print_help()
+        sys.exit(1)
 
+    args.cmd(args)
