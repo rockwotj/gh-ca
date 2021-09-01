@@ -103,7 +103,7 @@ def create_pr(args):
     # Call the underlying gh pr create command but replace the link that is printed over stdout with the
     # code approve link instead.
     pr_link_re = re.compile(
-        r"\bhttps://github.com/(?P<owner>\w+)/(?P<repo>\w+)/pull/(?P<number>\d+)\b"
+        r"\bhttps://github\.com/(?P<owner>[\w\-]+)/(?P<repo>[\w\-]+)/pull/(?P<number>\d+)\b"
     )
     returncode = asyncio.run(
         _transform_stdout(
