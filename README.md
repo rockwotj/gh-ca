@@ -8,7 +8,7 @@ This is a [`gh` cli][1] extension for https://codeapprove.com
 gh extension install rockwotj/gh-ca
 ```
 
-This extension is written in `python3`, and that executable must be on your `PATH`.
+This extension is written in `python3`, which must be on your `PATH`.
 
 ## Usage
 

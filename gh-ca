@@ -4,6 +4,7 @@
 import argparse
 import subprocess
 import re
+import os
 import sys
 
 
@@ -12,7 +13,7 @@ def _check_output(cmd):
     Captures the output of `cmd`, exiting the program if the command fails.
     """
     proc = subprocess.run(cmd, stdout=subprocess.PIPE)
-    output = proc.stdout.decode("utf-8")
+    output = proc.stdout.decode("utf-8").strip()
     if proc.returncode != 0:
         print(output, end="", file=sys.stdout)
         sys.exit(proc.returncode)
@@ -24,8 +25,6 @@ def create_pr(args):
     The PR subcommand for the CodeApprove CLI. This pushes the current branch and then calls gh pr create.
     """
     if not args.no_push:
-        # Get the current sha that we're going to push
-        current_branch = _check_output(["git", "rev-parse", "HEAD"])
         default_branch = _check_output(
             [
                 "gh",
@@ -40,12 +39,13 @@ def create_pr(args):
         # Check that we're not pushing the main branch
         # TODO(rockwood): Don't assume the remote is named "origin", but look it up.
         master_check_proc = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", current_branch, f"remotes/origin/{default_branch}"]
+            ["git", "merge-base", "--is-ancestor", 'HEAD', f"remotes/origin/{default_branch}"]
         )
         if master_check_proc.returncode == 0:
             print("You are on the master branch", file=sys.stderr)
             sys.exit(1)
         # Push this branch to the origin.
+        # TODO(rockwood): Don't assume the remote is named "origin", but look it up.
         push_proc = subprocess.run(["git", "push", "--set-upstream", "origin", "HEAD"])
         if push_proc.returncode != 0:
             sys.exit(push_proc.returncode)
@@ -69,17 +69,19 @@ def create_pr(args):
     )
     pr_proc = subprocess.Popen(
         cmd,
+        env={"GH_FORCE_TTY":"true", **os.environ},
         stdout=subprocess.PIPE,
-        bufsize=1,  # Buffer output by lines
-        universal_newlines=True,
+        bufsize=0,
+        text=True,
+        encoding='utf-8',
     )
-    for line in pr_proc.stdout:
-        print(
+    for chunk in pr_proc.stdout:
+        sys.stdout.write(
             pr_link_re.sub(
-                r"https://codeapprove.com/pr/\g<owner>/\g<repo>/\g<number>", line
+                r"https://codeapprove.com/pr/\g<owner>/\g<repo>/\g<number>", chunk
             ),
-            end="",
         )
+        sys.stdout.flush()
 
     sys.exit(pr_proc.wait())
 
