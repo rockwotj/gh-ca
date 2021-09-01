@@ -39,7 +39,7 @@ def create_pr(args):
         )
         # Check that we're not pushing the main branch
         master_check_proc = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", rev_parse_output, default_branch]
+            ["git", "merge-base", "--is-ancestor", current_branch, default_branch]
         )
         if master_check_proc.returncode != 0:
             print("You are on the master branch", file=sys.stderr)
