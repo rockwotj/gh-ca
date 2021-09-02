@@ -73,7 +73,7 @@ def create_pr(args):
     # head - the head branch name
     # title - the pr title
     # body - the pr body
-    base_url = "https://codeapprove/create"
+    base_url = "https://codeapprove.com/create"
     query = collections.OrderedDict()
     query["owner"] = repo_info["owner"]["login"]
     query["repo"] = repo_info["name"]
