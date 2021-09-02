@@ -1,0 +1,121 @@
+#!/usr/bin/env python3 -u
+# coding=utf-8
+
+import argparse
+import subprocess
+import re
+import os
+import sys
+import webbrowser
+import json
+import collections
+import urllib.parse
+
+
+def _check_output(cmd):
+    """
+    Captures the output of `cmd`, exiting the program if the command fails.
+    """
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE)
+    output = proc.stdout.decode("utf-8").strip()
+    if proc.returncode != 0:
+        print(output, end="", file=sys.stdout)
+        sys.exit(proc.returncode)
+    return output
+
+
+def create_pr(args):
+    """
+    The PR subcommand for the CodeApprove CLI. This pushes the current branch and then calls gh pr create.
+    """
+    repo_info = json.loads(
+        _check_output(
+            [
+                "gh",
+                "repo",
+                "view",
+                "--json",
+                "defaultBranchRef,owner,name",
+            ]
+        )
+    )
+    branch_name = _check_output([
+        "git",
+        "rev-parse",
+        "--abbrev-ref",
+        "HEAD",
+    ])
+    # TODO(rockwood): Don't assume the remote is named "origin", but look it up.
+    remote = "origin"
+    base = args.base if args.base is not None else repo_info["defaultBranchRef"]["name"]
+    if not args.no_push:
+        # Check that we're not pushing the main branch
+        master_check_proc = subprocess.run(
+            [
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                "HEAD",
+                f"remotes/{remote}/{base}",
+            ]
+        )
+        if master_check_proc.returncode == 0:
+            print(f"You are on the {base} branch", file=sys.stderr)
+            sys.exit(1)
+        # Push this branch to the origin.
+        push_proc = subprocess.run(["git", "push", "--set-upstream", remote, "HEAD"])
+        if push_proc.returncode != 0:
+            sys.exit(push_proc.returncode)
+    # Supported Query Params for this page:
+    # owner - GitHub repo owner
+    # repo - the repo name
+    # base - the base branch name
+    # head - the head branch name
+    # title - the pr title
+    # body - the pr body
+    base_url = "https://codeapprove.com/create"
+    query = collections.OrderedDict()
+    query["owner"] = repo_info["owner"]["login"]
+    query["repo"] = repo_info["name"]
+    query["base"] = base
+    query["head"] = branch_name
+    # TODO(rockwood): Autofill the title and body if there is only a single commit in this branch. 
+    webbrowser.open_new_tab(base_url + "?" + urllib.parse.urlencode(query))
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="A GitHub CLI extension for CodeApprove"
+    )
+
+    subparsers = parser.add_subparsers(
+        title="subcommands", help="The subcommand to issue"
+    )
+
+    # PR START
+    pr_parser = subparsers.add_parser(
+        "pr", help="Create a PR on CodeApprove - similar to `gh pr create`"
+    )
+    # This is a trick from the python documentation to get dynamic dispatch for each subcommand.
+    pr_parser.set_defaults(cmd=create_pr)
+
+    pr_parser.add_argument(
+        "--no_push",
+        action="store_true",
+        help="Disable pushing this branch to the origin first",
+    )
+    pr_parser.add_argument(
+        "-B",
+        "--base",
+        metavar="branch",
+        type=str,
+        help="The branch into which you want your code merged",
+    )
+    # PR END
+
+    args = parser.parse_args()
+
+    if not hasattr(args, "cmd"):
+        parser.print_help()
+        sys.exit(1)
+
+    args.cmd(args)
