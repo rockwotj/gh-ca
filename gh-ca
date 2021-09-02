@@ -30,9 +30,8 @@ async def _transform_stdout(cmd, env, regex, replacement):
             if fd not in [1, 2]:
                 print(f"Unexpected file descriptor: {fd}", file=sys.stderr)
                 sys.exit(1)
-            stdout = data.decode("utf-8")
             stream = sys.stdout if fd == 1 else sys.stderr
-            stream.write(regex.sub(replacement, stdout))
+            stream.buffer.write(regex.sub(replacement, data))
             stream.flush()
 
         def pipe_connection_lost(self, fd, exc):
@@ -117,7 +116,7 @@ def create_pr(args):
             cmd=cmd,
             env={"GH_FORCE_TTY": "true", **os.environ},
             regex=pr_link_re,
-            replacement=r"https://codeapprove.com/pr/\g<owner>/\g<repo>/\g<number>",
+            replacement=br"https://codeapprove.com/pr/\g<owner>/\g<repo>/\g<number>",
         )
     )
     sys.exit(returncode)
